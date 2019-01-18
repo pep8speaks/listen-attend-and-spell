@@ -1,8 +1,7 @@
 import os
-import sys
 import string
 from argparse import ArgumentParser
-
+from tqdm import tqdm
 import numpy as np
 import scipy.io.wavfile as wav
 
@@ -15,9 +14,9 @@ except:
 def parse_args():
     parser = ArgumentParser('Process VCTK dataset')
 
-    parser.add_argument('--data_dir', help='root directory of VCTK dataset')
+    parser.add_argument('--data_dir', help='root directory of VCTK dataset', required=True)
     parser.add_argument(
-        '--output_dir', help='output directory of processed dataset')
+        '--output_dir', help='output directory of processed dataset', required=True)
 
     args = parser.parse_args()
 
@@ -63,7 +62,7 @@ def process_speakers(speakers, args):
 
     features = {}
     labels = {}
-    for speaker in speakers:
+    for speaker in tqdm(speakers, unit='speaker'):
         txt_speaker_dir = os.path.join(args.txt_dir, speaker)
         wav_speaker_dir = os.path.join(args.wav_dir, speaker)
         for txt_file, wav_file in zip(sorted(os.listdir(txt_speaker_dir)), sorted(os.listdir(wav_speaker_dir))):
@@ -93,6 +92,8 @@ def main(args):
     features, labels = process_speakers(train_speakers, args)
     np.save(os.path.join(args.output_dir, 'train.feat'), features)
     np.save(os.path.join(args.output_dir, 'train.label'), labels)
+    del features
+    del labels
 
     print('Process testing')
     features, labels = process_speakers(test_speakers, args)

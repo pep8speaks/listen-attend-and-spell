@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 from argparse import ArgumentParser
 
 
@@ -19,19 +20,19 @@ def make_example(input, label):
 
 
 parser = ArgumentParser()
-parser.add_argument('--inputs')
-parser.add_argument('--labels')
-parser.add_argument('--output')
+parser.add_argument('--inputs', help='File with saved list of features.', required=True)
+parser.add_argument('--labels', help='File with saved list of labels.', required=True)
+parser.add_argument('--output', help='Output path.', required=True)
 
 args = parser.parse_args()
 
-with tf.python_io.TFRecordWriter(args.output) as writer:
+with tf.io.TFRecordWriter(args.output) as writer:
     inputs = np.load(args.inputs).item()
     labels = np.load(args.labels).item()
 
     assert len(inputs) == len(labels)
 
-    for i, (name, input) in enumerate(inputs.items()):
+    for i, (name, input) in tqdm(enumerate(inputs.items()), 'phrase'):
         label = labels[name]
 
         if i < 10:
