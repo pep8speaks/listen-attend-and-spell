@@ -29,7 +29,8 @@ def read_dataset(filename, num_channels=39):
     return dataset
 
 
-def process_dataset(dataset, vocab_table, sos, eos, batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False):
+def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
+                    batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False):
 
     output_buffer_size = batch_size * 1000
 
@@ -50,6 +51,15 @@ def process_dataset(dataset, vocab_table, sos, eos, batch_size=8, num_epochs=1, 
         lambda inputs, labels: (tf.cast(inputs, tf.float32),
                                 tf.cast(labels, tf.int32)),
         num_parallel_calls=num_parallel_calls)
+
+    if means is not None and stds is not None:
+        print('Applying normalization.')
+        means_const = tf.constant(means, dtype=tf.float32)
+        stds_const = tf.constant(stds, dtype=tf.float32)
+        dataset = dataset.map(
+            lambda inputs, labels: ((inputs - means_const) / stds_const,
+                                    labels),
+            num_parallel_calls=num_parallel_calls)
 
     dataset = dataset.map(
         lambda inputs, labels: (inputs,

@@ -1,4 +1,5 @@
 import tensorflow as tf
+import joblib
 
 
 def calculate_mfcc_op(sample_rate, coeffs, window, step, mels):
@@ -17,3 +18,8 @@ def calculate_mfcc_op(sample_rate, coeffs, window, step, mels):
         mfccs = tf.contrib.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrograms)[..., :coeffs]
         return mfccs
     return _mfcc_op
+
+
+def load_normalization(norm_path):
+    means, stds = joblib.load(norm_path)
+    return means, stds
