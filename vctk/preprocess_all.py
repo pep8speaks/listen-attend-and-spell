@@ -99,6 +99,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_mels', help='Number of mel-filters.', type=int, default=40)
     parser.add_argument('--window', help='Analysis window length in ms.', type=int, default=20)
     parser.add_argument('--step', help='Analysis window step in ms.', type=int, default=10)
+    parser.add_argument('--n_jobs', help='Number of parallel jobs.', type=int, default=4)
     args = parser.parse_args()
     print('Processing audio dataset from file {}.'.format(args.input_file))
     window = int(SAMPLE_RATE * args.window / 1000.0)
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     lines = open(args.input_file, 'r').readlines()
     par_handle = tqdm(unit='sound')
     with tf.io.TFRecordWriter(args.output_file) as writer:
-        Parallel(n_jobs=4, prefer="threads")(delayed(process_line)(args, writer, x) for x in lines)
+        Parallel(n_jobs=args.n_jobs, prefer="threads")(delayed(process_line)(args, writer, x) for x in lines)
     session.close()
     par_handle.close()
     if args.norm_file is not None:
