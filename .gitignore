@@ -3,3 +3,4 @@ model
 venv
 .idea
 py*tf*
+*.pyc

@@ -18,6 +18,6 @@ for root, _, files in tqdm(os.walk(args.vctk_path), desc='Collecting filenames')
         if not os.path.exists(text_path):
             continue
         with open(text_path, 'r') as f:
-            text = f.read().strip()
+            text = f.read().strip().replace(',', '')
         audio_path = os.path.join(root, audio_filename)
-        output.write('{}|||{}\n'.format(audio_path, text_path))
+        output.write('{},{}\n'.format(audio_path, text))
