@@ -1,5 +1,6 @@
 import argparse
 import tensorflow as tf
+import subprocess
 
 import utils
 
@@ -62,6 +63,14 @@ def parse_args():
                         help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.2,
                         help='dropout rate of rnn cell')
+    parser.add_argument('--use_tpu', type=str, default='no', help='Use TPU for training?',
+                        choices=['yes', 'no', 'fake'])
+    parser.add_argument('--tpu_name', type=str, default='', help='Name of TPU.')
+    parser.add_argument('--tpu_num_shards', type=int, default=8, help='Number of TPU shards.')
+    parser.add_argument('--train_steps', type=int, help='Max steps for training (required for TPU usage).',
+                        default=None)
+    parser.add_argument('--eval_steps', type=int, help='Evaluation steps (required for TPU usage).',
+                        default=None)
 
     return parser.parse_args()
 
@@ -85,34 +94,66 @@ def main(args):
     vocab_list = utils.load_vocab(args.vocab)
     vocab_size = len(vocab_list)
 
-    config = tf.estimator.RunConfig(model_dir=args.model_dir)
     hparams = utils.create_hparams(
         args, vocab_size, utils.SOS_ID, utils.EOS_ID)
 
-    model = tf.estimator.Estimator(
-        model_fn=las_model_fn,
-        config=config,
-        params=hparams)
+    if args.use_tpu == 'no':
+        config = tf.estimator.RunConfig(model_dir=args.model_dir)
+        model = tf.estimator.Estimator(
+            model_fn=las_model_fn,
+            config=config,
+            params=hparams)
+    else:
+        if args.use_tpu == 'yes':
+            project_name = subprocess.check_output([
+                'gcloud', 'config', 'get-value', 'project'])
+            zone = subprocess.check_output([
+                'gcloud', 'config', 'get-value', 'compute/zone'])
+            cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+                tpu_names=[args.tpu_name],
+                zone=zone,
+                project=project_name)
+            run_config = tf.contrib.tpu.RunConfig(
+                cluster=cluster_resolver,
+                model_dir=args.model_dir,
+                session_config=tf.ConfigProto(
+                    allow_soft_placement=True, log_device_placement=True),
+                tpu_config=tf.contrib.tpu.TPUConfig(args.iterations, args.num_shards),
+            )
+        else:
+            run_config = tf.contrib.tpu.RunConfig(model_dir=args.model_dir)
+        model = tf.contrib.tpu.TPUEstimator(
+            model_fn=las_model_fn,
+            config=run_config,
+            use_tpu=False if args.use_tpu == 'fake' else True,
+            train_batch_size=args.batch_size,
+            eval_batch_size=args.batch_size,
+            predict_batch_size=args.batch_size,
+            params=hparams
+        )
 
     if args.valid:
         train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: input_fn(
-                args.train, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size,
-                num_epochs=args.num_epochs))
+            input_fn=lambda params: input_fn(
+                args.train, args.vocab, args.norm, num_channels=args.num_channels,
+                batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size,
+                num_epochs=args.num_epochs), max_steps=args.train_steps)
 
         eval_spec = tf.estimator.EvalSpec(
-            input_fn=lambda: input_fn(
+            input_fn=lambda params: input_fn(
                 args.valid or args.train, args.vocab, args.norm, num_channels=args.num_channels,
-                batch_size=args.batch_size),
+                batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size),
             start_delay_secs=60,
-            throttle_secs=args.eval_secs)
+            throttle_secs=args.eval_secs,
+            steps=args.eval_steps)
 
         tf.estimator.train_and_evaluate(model, train_spec, eval_spec)
     else:
         model.train(
-            input_fn=lambda: input_fn(
-                args.train, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size,
-                num_epochs=args.num_epochs))
+            input_fn=lambda params: input_fn(
+                args.train, args.vocab, args.norm, num_channels=args.num_channels,
+                batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size,
+                num_epochs=args.num_epochs), max_steps=args.train_steps)
 
 
 if __name__ == '__main__':

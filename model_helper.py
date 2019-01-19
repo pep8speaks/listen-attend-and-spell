@@ -73,7 +73,6 @@ def las_model_fn(features,
                  mode,
                  config,
                  params):
-
     encoder_inputs = features['encoder_inputs']
     source_sequence_length = features['source_sequence_length']
 
@@ -112,8 +111,10 @@ def las_model_fn(features,
         predictions = {
             'sample_ids': sample_ids,
         }
-
-        return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+        if params.tpu.use_tpu == 'no':
+            return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+        else:
+            return tf.contrib.tpu.TPUEstimatorSpec(mode, predictions=predictions)
 
     with tf.name_scope('metrics'):
         edit_distance = utils.edit_distance(
@@ -129,6 +130,7 @@ def las_model_fn(features,
         loss = compute_loss(
             logits, targets, final_sequence_length, target_sequence_length, mode)
 
+    spec_cls = tf.contrib.tpu.TPUEstimatorSpec if params.tpu.use_tpu != 'no' else tf.estimator.EstimatorSpec
     if mode == tf.estimator.ModeKeys.EVAL:
         with tf.name_scope('alignment'):
             attention_images = utils.create_attention_images(
@@ -152,19 +154,18 @@ def las_model_fn(features,
             'min_targets': targets[tf.argmin(edit_distance)],
         }, every_n_iter=10)
 
-        return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=[logging_hook, eval_summary_hook])
+        return spec_cls(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=[logging_hook, eval_summary_hook])
 
     with tf.name_scope('train'):
         optimizer = tf.train.AdamOptimizer(params.learning_rate)
+        if params.tpu.use_tpu != 'no':
+            optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
         train_op = optimizer.minimize(
             loss, global_step=tf.train.get_global_step())
 
     logging_hook = tf.train.LoggingTensorHook({
         'loss': loss,
-        'edit_distance': tf.reduce_mean(edit_distance),
-        #'max_edit_distance': tf.reduce_max(edit_distance),
-        #'predictions': sample_ids[tf.argmax(edit_distance)],
-        #'targets': targets[tf.argmax(edit_distance)],
+        'edit_distance': tf.reduce_mean(edit_distance)
     }, every_n_secs=10)
 
-    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op, training_hooks=[logging_hook])
+    return spec_cls(mode, loss=loss, train_op=train_op, training_hooks=[logging_hook])

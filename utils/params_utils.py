@@ -30,6 +30,9 @@ def get_default_hparams():
         # global setting
         learning_rate=1e-3,
         dropout=0.2,
+        use_tpu='no',
+        tpu_name='',
+        tpu_num_shards=8,
 
         # encoder setting
         encoder_layers=3,
@@ -97,6 +100,12 @@ def get_encoder_decoder_hparams(hparams):
     dropout = hparams.pop_hparam('dropout')
     mapping = hparams.pop_hparam('mapping')
 
+    tpu_params = HParams(
+        use_tpu=hparams.pop_hparam('use_tpu'),
+        tpu_name=hparams.pop_hparam('tpu_name'),
+        tpu_num_shards=hparams.pop_hparam('tpu_num_shards')
+    )
+
     encoder_hparams = HParams(
         num_layers=hparams.pop_hparam('encoder_layers'),
         num_units=hparams.pop_hparam('encoder_units'),
@@ -114,5 +123,6 @@ def get_encoder_decoder_hparams(hparams):
     return HParams(
         learning_rate=learning_rate,
         mapping=mapping,
+        tpu=tpu_params,
         encoder=encoder_hparams,
         decoder=decoder_hparams)

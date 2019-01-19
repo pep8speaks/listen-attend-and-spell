@@ -30,6 +30,10 @@ def parse_args():
                         help='batch size')
     parser.add_argument('--num_channels', type=int, default=39,
                         help='number of input channels')
+    parser.add_argument('--use_tpu', type=str, default='no', help='Use TPU for training?',
+                        choices=['yes', 'no', 'fake'])
+    parser.add_argument('--tpu_name', type=str, default='', help='Name of TPU.')
+    parser.add_argument('--tpu_num_shards', type=int, default=8, help='Number of TPU shards.')
 
     return parser.parse_args()
 
@@ -46,7 +50,7 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
     dataset = utils.process_dataset(
         dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
 
-    return dataset
+    return dataset.take(10)
 
 
 def main(args):
