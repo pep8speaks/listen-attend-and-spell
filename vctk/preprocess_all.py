@@ -1,6 +1,7 @@
-import tensorflow as tf
-import tensorflow_transform as tft
+from collections import Counter
 import librosa
+import numpy as np
+from joblib import Parallel, delayed
 
 from utils import calculate_mfcc_op
 
@@ -11,6 +12,11 @@ N_MFCC = 13
 WINDOW = int(.02 * SAMPLE_RATE)
 STEP = WINDOW // 2
 N_MELS = 40
+ALPHA = 0.9
+
+vocabulary = Counter()
+running_mean = np.zeros(1, N_MFCC)
+running_std = np.zeros(1, N_MFCC)
 
 
 def read_audio_and_text(inputs):
@@ -28,13 +34,15 @@ def read_audio_and_text(inputs):
 
 
 def build_features_and_vocabulary_fn(inputs):
+    global running_mean, running_std
     waveform = inputs['waveform']
     text = inputs['text']
     mfcc = calculate_mfcc_op(SAMPLE_RATE, N_MFCC, WINDOW, STEP, N_MELS)(waveform)
-    mfcc_normalized = tft.scale_to_z_score(mfcc, name='mfcc_normalization')
-    # tft.vocabulary(text, top_k=10000, vocab_filename=VOCAB_FILENAME, name='vocabulary')
+    vocabulary.update(text)
+    running_mean = ALPHA * running_mean + (1 - ALPHA) * np.mean(mfcc, axis=0)
+    running_std = ALPHA * running_std + (1 - ALPHA) * np.std(mfcc, axis=0)
     return {
-        'mfcc': mfcc_normalized,
+        'mfcc': mfcc,
         'text': text
     }
 
