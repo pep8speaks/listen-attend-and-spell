@@ -31,7 +31,9 @@ def read_dataset(filename, num_channels=39):
 
 def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
                     batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False):
-
+    max_size = 2000
+    max_labels_size = 200
+    num_channels = 13
     output_buffer_size = batch_size * 1000
 
     sos_id = tf.cast(vocab_table.lookup(tf.constant(sos)), tf.int32)
@@ -74,6 +76,25 @@ def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
                                                tf.shape(inputs)[0],
                                                tf.size(labels_in)),
         num_parallel_calls=num_parallel_calls)
+
+    if max_size > 0:
+        dataset = dataset.filter(lambda inputs, labels_in, labels_out,
+                                 source_sequence_length, target_sequence_length: (source_sequence_length <= max_size))
+        dataset = dataset.filter(
+            lambda inputs, labels_in, labels_out,
+            source_sequence_length, target_sequence_length: (target_sequence_length <= max_labels_size))
+        dataset = dataset.map(
+            lambda inputs, labels_in, labels_out,
+            source_sequence_length, target_sequence_length: (
+                tf.ensure_shape(tf.pad(inputs, [[0, max_size - source_sequence_length], [0, 0]]),
+                                [max_size, num_channels]),
+                tf.ensure_shape(tf.pad(labels_in, [[0, max_labels_size - target_sequence_length]]),
+                                [max_labels_size]),
+                tf.ensure_shape(tf.pad(labels_out, [[0, max_labels_size - target_sequence_length]]),
+                                [max_labels_size]),
+                source_sequence_length,
+                target_sequence_length),
+            num_parallel_calls=num_parallel_calls)
 
     dataset = dataset.map(
         lambda inputs, labels_in, labels_out,
