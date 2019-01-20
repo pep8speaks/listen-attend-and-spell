@@ -125,7 +125,7 @@ def main(args):
                 model_dir=args.model_dir,
                 session_config=tf.ConfigProto(
                     allow_soft_placement=True, log_device_placement=True),
-                tpu_config=tf.contrib.tpu.TPUConfig(args.tpu_steps_per_checkpoint, args.num_shards),
+                tpu_config=tf.contrib.tpu.TPUConfig(args.tpu_steps_per_checkpoint, args.tpu_num_shards),
             )
         else:
             run_config = tf.contrib.tpu.RunConfig(model_dir=args.model_dir)
