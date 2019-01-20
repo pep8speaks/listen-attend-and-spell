@@ -110,7 +110,7 @@ def main(args):
             zone = subprocess.check_output([
                 'gcloud', 'config', 'get-value', 'compute/zone'])
             cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-                tpu_names=[args.tpu_name],
+                tpu=[args.tpu_name],
                 zone=zone,
                 project=project_name)
             run_config = tf.contrib.tpu.RunConfig(
