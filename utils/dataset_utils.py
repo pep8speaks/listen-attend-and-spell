@@ -100,7 +100,7 @@ def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
                 'targets_inputs': eos_id,
                 'targets_outputs': eos_id,
                 'target_sequence_length': 0,
-            }))
+            }), drop_remainder=True)
 
     '''
     dataset = dataset.filter(lambda features, labels: tf.equal(
