@@ -71,6 +71,8 @@ def parse_args():
                         default=None)
     parser.add_argument('--eval_steps', type=int, help='Evaluation steps (required for TPU usage).',
                         default=None)
+    parser.add_argument('--tpu_steps_per_checkpoint', type=int, help='TPU step per checkpoint.',
+                        default=1000)
 
     return parser.parse_args()
 
@@ -113,6 +115,7 @@ def main(args):
                 print('Project is not set.')
                 project_name = None
                 zone = None
+            print('Setting up TPU training for device: {}'.format(args.tpu_name))
             cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
                 tpu=[args.tpu_name],
                 zone=zone,
@@ -122,7 +125,7 @@ def main(args):
                 model_dir=args.model_dir,
                 session_config=tf.ConfigProto(
                     allow_soft_placement=True, log_device_placement=True),
-                tpu_config=tf.contrib.tpu.TPUConfig(args.iterations, args.num_shards),
+                tpu_config=tf.contrib.tpu.TPUConfig(args.tpu_steps_per_checkpoint, args.num_shards),
             )
         else:
             run_config = tf.contrib.tpu.RunConfig(model_dir=args.model_dir)
