@@ -109,6 +109,10 @@ def main(args):
                 'gcloud', 'config', 'get-value', 'project'])
             zone = subprocess.check_output([
                 'gcloud', 'config', 'get-value', 'compute/zone'])
+            if not project_name:
+                print('Project is not set.')
+                project_name = None
+                zone = None
             cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
                 tpu=[args.tpu_name],
                 zone=zone,
