@@ -14,8 +14,8 @@ Tensorflow and Numpy are needed. Run `pip install -r requirements.txt` to get th
 Before running the training script, you should convert your data into TFRecord format, collect normalization data and prepare vocabulary.
 To do that, collect your train and test data in separate CSV files like this:
 ```csv
-filename1.wav,big brown fox
-filename2.wav,another fox
+filename1.wav,en,big brown fox
+filename2.wav,en,another fox
 ```
 Recipes for some datasets are available in `recipes` folder.
 After that call data collection script: `process_all.py`.
@@ -42,6 +42,8 @@ optional arguments:
   --window WINDOW       Analysis window length in ms.
   --step STEP           Analysis window step in ms.
   --n_jobs N_JOBS       Number of parallel jobs.
+  --targets {words,phones}
+                        Determines targets type.
 ```
 
 ### Training and Evaluation

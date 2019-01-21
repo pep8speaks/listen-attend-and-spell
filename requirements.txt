@@ -14,3 +14,4 @@ termcolor==1.1.0
 Werkzeug==0.14.1
 tqdm==4.29.1
 librosa==0.6.2
+py-espeak-ng==0.1.6
