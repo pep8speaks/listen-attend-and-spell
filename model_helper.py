@@ -124,7 +124,8 @@ def las_model_fn(features,
             'edit_distance': tf.metrics.mean(edit_distance),
         }
 
-    tf.summary.scalar('edit_distance', metrics['edit_distance'][1])
+    if params.tpu.use_tpu == 'no':
+        tf.summary.scalar('edit_distance', metrics['edit_distance'][1])
 
     with tf.name_scope('cross_entropy'):
         loss = compute_loss(
@@ -147,11 +148,7 @@ def las_model_fn(features,
         logging_hook = tf.train.LoggingTensorHook({
             'edit_distance': tf.reduce_mean(edit_distance),
             'max_edit_distance': tf.reduce_max(edit_distance),
-            'max_predictions': sample_ids[tf.argmax(edit_distance)],
-            'max_targets': targets[tf.argmax(edit_distance)],
-            'min_edit_distance': tf.reduce_min(edit_distance),
-            'min_predictions': sample_ids[tf.argmin(edit_distance)],
-            'min_targets': targets[tf.argmin(edit_distance)],
+            'min_edit_distance': tf.reduce_min(edit_distance)
         }, every_n_iter=10)
 
         return spec_cls(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=[logging_hook, eval_summary_hook])

@@ -72,7 +72,7 @@ def parse_args():
     parser.add_argument('--eval_steps', type=int, help='Evaluation steps (required for TPU usage).',
                         default=None)
     parser.add_argument('--tpu_steps_per_checkpoint', type=int, help='TPU step per checkpoint.',
-                        default=1000)
+                        default=100)
 
     return parser.parse_args()
 
