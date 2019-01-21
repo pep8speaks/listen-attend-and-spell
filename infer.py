@@ -17,6 +17,8 @@ def parse_args():
                         help='inference data in TFRecord format')
     parser.add_argument('--vocab', type=str, required=True,
                         help='vocabulary table, listing vocabulary line by line')
+    parser.add_argument('--norm', type=str, default=None,
+                        help='normalization params')
     parser.add_argument('--model_dir', type=str, required=True,
                         help='path of imported model')
     parser.add_argument('--save', type=str, required=True,
@@ -32,20 +34,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def input_fn(dataset_filename, vocab_filename, num_channels=39, batch_size=8, num_epochs=1):
+def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1):
     dataset = utils.read_dataset(dataset_filename, num_channels)
     vocab_table = utils.create_vocab_table(vocab_filename)
 
+    if norm_filename is not None:
+        means, stds = utils.load_normalization(args.norm)
+    else:
+        means = stds = None
+
     dataset = utils.process_dataset(
-        dataset, vocab_table, utils.SOS, utils.EOS, batch_size, num_epochs, is_infer=True)
+        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
 
     return dataset
 
 
 def main(args):
-
-    vocab_list = np.array(utils.load_vocab(args.vocab))
-
+    vocab_list = utils.load_vocab(args.vocab)
     vocab_size = len(vocab_list)
 
     config = tf.estimator.RunConfig(model_dir=args.model_dir)
@@ -61,14 +66,14 @@ def main(args):
 
     predictions = model.predict(
         input_fn=lambda: input_fn(
-            args.data, args.vocab, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1),
+            args.data, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1),
         predict_keys='sample_ids')
 
     if args.beam_width > 0:
         predictions = [vocab_list[y['sample_ids'][:, 0]].tolist() + [utils.EOS]
                        for y in predictions]
     else:
-        predictions = [vocab_list[y['sample_ids']].tolist() + [utils.EOS]
+        predictions = [[vocab_list[x] for x in y['sample_ids']] + [utils.EOS]
                        for y in predictions]
 
     predictions = [' '.join(y[:y.index(utils.EOS)]) for y in predictions]
@@ -79,7 +84,5 @@ def main(args):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-
     args = parse_args()
-
     main(args)
