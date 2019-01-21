@@ -43,6 +43,7 @@ def get_default_hparams():
         decoder_layers=2,
         decoder_units=128,
         target_vocab_size=0,
+        max_len=0,
         embedding_size=0,
         sampling_probability=0.1,
         sos_id=1,
@@ -115,6 +116,7 @@ def get_encoder_decoder_hparams(hparams):
     decoder_hparams = HParams(
         num_layers=hparams.pop_hparam('decoder_layers'),
         num_units=hparams.pop_hparam('decoder_units'),
+        max_len=hparams.pop_hparam('max_len'),
         dropout=dropout)
 
     for name, value in hparams.values().items():

@@ -73,11 +73,16 @@ def parse_args():
                         default=None)
     parser.add_argument('--tpu_steps_per_checkpoint', type=int, help='TPU step per checkpoint.',
                         default=100)
+    parser.add_argument('--max_frames', type=int, help='Maximum number of input frames.',
+                        default=2000)
+    parser.add_argument('--max_size', type=int, help='Maximum number of output symbols.',
+                        default=200)
 
     return parser.parse_args()
 
 
-def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1):
+def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1,
+             max_size=0, max_labels_size=0):
     dataset = utils.read_dataset(dataset_filename, num_channels)
     vocab_table = utils.create_vocab_table(vocab_filename)
 
@@ -87,7 +92,9 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
         means = stds = None
 
     dataset = utils.process_dataset(
-        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
+        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs,
+        max_size=max_size, max_labels_size=max_labels_size, num_channels=num_channels
+    )
 
     return dataset
 
@@ -144,12 +151,14 @@ def main(args):
             input_fn=lambda params: input_fn(
                 args.train, args.vocab, args.norm, num_channels=args.num_channels,
                 batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size,
-                num_epochs=args.num_epochs), max_steps=args.train_steps)
+                num_epochs=args.num_epochs, max_size=args.max_frames, max_labels_size=args.max_size),
+            max_steps=args.train_steps)
 
         eval_spec = tf.estimator.EvalSpec(
             input_fn=lambda params: input_fn(
                 args.valid or args.train, args.vocab, args.norm, num_channels=args.num_channels,
-                batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size),
+                batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size,
+                max_size=args.max_frames, max_labels_size=args.max_size),
             start_delay_secs=60,
             throttle_secs=args.eval_secs,
             steps=args.eval_steps)
@@ -160,7 +169,8 @@ def main(args):
             input_fn=lambda params: input_fn(
                 args.train, args.vocab, args.norm, num_channels=args.num_channels,
                 batch_size=args.batch_size if args.use_tpu == 'no' else params.batch_size,
-                num_epochs=args.num_epochs), max_steps=args.train_steps)
+                num_epochs=args.num_epochs, max_size=args.max_frames, max_labels_size=args.max_size),
+            max_steps=args.train_steps)
 
 
 if __name__ == '__main__':

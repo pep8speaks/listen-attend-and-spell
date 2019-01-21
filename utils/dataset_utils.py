@@ -30,10 +30,8 @@ def read_dataset(filename, num_channels=39):
 
 
 def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
-                    batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False):
-    max_size = 2000
-    max_labels_size = 200
-    num_channels = 13
+                    batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False,
+                    max_size=0, max_labels_size=0, num_channels=39):
     output_buffer_size = batch_size * 1000
 
     sos_id = tf.cast(vocab_table.lookup(tf.constant(sos)), tf.int32)

@@ -188,7 +188,6 @@ def speller(encoder_outputs,
             mode,
             hparams):
 
-    max_len = 200
     batch_size = tf.shape(encoder_outputs)[0]
     beam_width = hparams.beam_width
 
@@ -228,8 +227,8 @@ def speller(encoder_outputs,
     else:
         initial_state = decoder_cell.zero_state(batch_size, tf.float32)
 
-    if max_len > 0:
-        maximum_iterations = tf.constant(max_len)
+    if hparams.max_len > 0:
+        maximum_iterations = tf.constant(hparams.max_len)
     else:
         max_source_length = tf.reduce_max(source_sequence_length)
         maximum_iterations = tf.to_int32(tf.round(tf.to_float(
@@ -240,11 +239,9 @@ def speller(encoder_outputs,
 
         if hparams.sampling_probability > 0.0:
             helper = TPUScheduledEmbeddingTrainingHelper(
-                decoder_inputs, target_sequence_length,
-                embedding_fn, hparams.sampling_probability, batch_size)
+                decoder_inputs, target_sequence_length, embedding_fn, hparams.sampling_probability)
         else:
-            helper = tf.contrib.seq2seq.TrainingHelper(
-                decoder_inputs, target_sequence_length)
+            helper = tf.contrib.seq2seq.TrainingHelper(decoder_inputs, target_sequence_length)
 
         decoder = tf.contrib.seq2seq.BasicDecoder(
             decoder_cell, helper, initial_state, output_layer=projection_layer)
