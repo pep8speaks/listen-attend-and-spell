@@ -46,7 +46,7 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
     dataset = utils.process_dataset(
         dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
 
-    return dataset
+    return dataset.take(10)
 
 
 def main(args):
