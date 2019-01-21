@@ -7,8 +7,8 @@
 ## Usage
 
 ### Requirements
-
-Tensorflow and Numpy are needed. Run `pip install -r requirements.txt` to get the lastest version.
+Run `pip install -r requirements.txt` to get the necessary version.
+To do training on phone targets, you'll need `espeak-ng` installed.
 
 ### Data Preparing
 Before running the training script, you should convert your data into TFRecord format, collect normalization data and prepare vocabulary.
@@ -119,25 +119,22 @@ optional arguments:
 With the help of tensorflow estimator API, you can launch tensorboard by `tensorboard --logdir=MODEL_DIR`  to see the training procedure.
 
 ## Result
-### TIMIT
+### Phones
+### Words
+#### TIMIT
 The following figures show the results on TIMIT dataset (4620 training sentence and 1680 testing sentence). If you prepare the TFRecord files of TIMIT, you can run the model with `misc/hparams.json` (put it into your model directory) to produce the similar results. Note that, customarily, we map phones into 39 phone set while evaluating TIMIT dataset, and thus, the edit distance evaluated down below is based on 39 phone set.
 
 ![training curve](images/curve.png)
 
-### VCTK
-[VCTK](http://homepages.inf.ed.ac.uk/jyamagis/page3/page58/page58.html) is also used as benchmark. Before running `./run-vctk.sh` to process data and train the model, *please run `pip install speechpy` to install `speechpy` first*. Note that since VCTK has no train-test split, the first 90 speakers are chose as the training set, and remaining are the testing set. **For more details about how to extract audio features and create TFRecord files, please refer to `vctk/`**.
-
 ## References
 
+- [WindQAQ implementation][original_implementation]
 - [Listen, Attend and spell][las]
 - [How to create TFRecord][sequence_example]
 - [nabu's implementation][nabu]
 - [Tensorflow official seq2seq code][nmt]
 
-## Contact
-
-Issues and pull requests are welcomed. Feel free to [contact me](mailto:windqaq@gmail.com) if there's any problems.
-
+[original_implementation]: https://github.com/WindQAQ/listen-attend-and-spell
 [nabu]: https://github.com/vrenkens/nabu
 [nmt]: https://github.com/tensorflow/nmt
 [las]: https://arxiv.org/pdf/1508.01211.pdf
