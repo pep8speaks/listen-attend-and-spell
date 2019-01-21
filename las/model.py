@@ -4,6 +4,7 @@ from tensorflow.python.util import nest
 
 from las.ops import lstm_cell
 from las.ops import pyramidal_bilstm
+from utils.custom_helpers import TPUScheduledEmbeddingTrainingHelper
 
 __all__ = [
     'listener',
@@ -187,6 +188,7 @@ def speller(encoder_outputs,
             mode,
             hparams):
 
+    max_len = 200
     batch_size = tf.shape(encoder_outputs)[0]
     beam_width = hparams.beam_width
 
@@ -226,17 +228,20 @@ def speller(encoder_outputs,
     else:
         initial_state = decoder_cell.zero_state(batch_size, tf.float32)
 
-    max_source_length = tf.reduce_max(source_sequence_length)
-    maximum_iterations = tf.to_int32(tf.round(tf.to_float(
-        max_source_length) * hparams.decoding_length_factor))
+    if max_len > 0:
+        maximum_iterations = tf.constant(max_len)
+    else:
+        max_source_length = tf.reduce_max(source_sequence_length)
+        maximum_iterations = tf.to_int32(tf.round(tf.to_float(
+            max_source_length) * hparams.decoding_length_factor))
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         decoder_inputs = embedding_fn(decoder_inputs)
 
         if hparams.sampling_probability > 0.0:
-            helper = tf.contrib.seq2seq.ScheduledEmbeddingTrainingHelper(
+            helper = TPUScheduledEmbeddingTrainingHelper(
                 decoder_inputs, target_sequence_length,
-                embedding_fn, hparams.sampling_probability)
+                embedding_fn, hparams.sampling_probability, batch_size)
         else:
             helper = tf.contrib.seq2seq.TrainingHelper(
                 decoder_inputs, target_sequence_length)

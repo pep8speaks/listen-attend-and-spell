@@ -4,6 +4,8 @@ import tensorflow as tf
 import las
 import utils
 
+tf.logging.set_verbosity(5)
+
 __all__ = [
     'las_model_fn',
 ]
@@ -12,10 +14,11 @@ __all__ = [
 def compute_loss(logits, targets, final_sequence_length, target_sequence_length, mode):
 
     assert mode != tf.estimator.ModeKeys.PREDICT
+    max_len = 200
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         target_weights = tf.sequence_mask(
-            target_sequence_length, dtype=tf.float32)
+            target_sequence_length, max_len, dtype=tf.float32)
         loss = tf.contrib.seq2seq.sequence_loss(
             logits, targets, target_weights)
     else:
@@ -137,21 +140,25 @@ def las_model_fn(features,
             attention_images = utils.create_attention_images(
                 final_context_state)
 
-        attention_summary = tf.summary.image(
-            'attention_images', attention_images)
+        if params.tpu.use_tpu != 'no':
+            hooks = None
+        else:
+            attention_summary = tf.summary.image(
+                'attention_images', attention_images)
 
-        eval_summary_hook = tf.train.SummarySaverHook(
-            save_steps=10,
-            output_dir=os.path.join(config.model_dir, 'eval'),
-            summary_op=attention_summary)
+            eval_summary_hook = tf.train.SummarySaverHook(
+                save_steps=10,
+                output_dir=os.path.join(config.model_dir, 'eval'),
+                summary_op=attention_summary)
 
-        logging_hook = tf.train.LoggingTensorHook({
-            'edit_distance': tf.reduce_mean(edit_distance),
-            'max_edit_distance': tf.reduce_max(edit_distance),
-            'min_edit_distance': tf.reduce_min(edit_distance)
-        }, every_n_iter=10)
+            logging_hook = tf.train.LoggingTensorHook({
+                'edit_distance': tf.reduce_mean(edit_distance),
+                'max_edit_distance': tf.reduce_max(edit_distance),
+                'min_edit_distance': tf.reduce_min(edit_distance)
+            }, every_n_iter=10)
+            hooks = [logging_hook, eval_summary_hook]
 
-        return spec_cls(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=[logging_hook, eval_summary_hook])
+        return spec_cls(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=hooks)
 
     with tf.name_scope('train'):
         optimizer = tf.train.AdamOptimizer(params.learning_rate)
@@ -160,9 +167,13 @@ def las_model_fn(features,
         train_op = optimizer.minimize(
             loss, global_step=tf.train.get_global_step())
 
-    logging_hook = tf.train.LoggingTensorHook({
-        'loss': loss,
-        'edit_distance': tf.reduce_mean(edit_distance)
-    }, every_n_secs=10)
+    if params.tpu.use_tpu != 'no':
+        hooks = None
+    else:
+        logging_hook = tf.train.LoggingTensorHook({
+            'loss': loss,
+            'edit_distance': tf.reduce_mean(edit_distance)
+        }, every_n_secs=10)
+        hooks = [logging_hook]
 
-    return spec_cls(mode, loss=loss, train_op=train_op, training_hooks=[logging_hook])
+    return spec_cls(mode, loss=loss, train_op=train_op, training_hooks=hooks)
