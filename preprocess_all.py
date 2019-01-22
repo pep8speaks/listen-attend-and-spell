@@ -62,16 +62,18 @@ def build_features_and_vocabulary_fn(args, inputs):
     language = inputs['language']
     if args.targets == 'phones':
         text = list(' '.join([get_ipa(t, language) for t in text]))
+        text = [x if x != ' ' else '<space>' for x in text]
     mfcc = session.run(mfcc_op, {waveform_place: waveform[np.newaxis, :]})[0, :, :]
     vocabulary.update(text)
-    with stats_mutex:
-        if means is None:
-            means = np.mean(mfcc, axis=0)
-            stds = np.std(mfcc, axis=0)
-        else:
-            means += np.mean(mfcc, axis=0)
-            stds += np.std(mfcc, axis=0)
-        total += 1
+    if args.norm_file:
+        with stats_mutex:
+            if means is None:
+                means = np.mean(mfcc, axis=0)
+                stds = np.std(mfcc, axis=0)
+            else:
+                means += np.mean(mfcc, axis=0)
+                stds += np.std(mfcc, axis=0)
+            total += 1
     return {
         'mfcc': mfcc,
         'text': text
