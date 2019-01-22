@@ -61,7 +61,7 @@ def build_features_and_vocabulary_fn(args, inputs):
     text = inputs['text']
     language = inputs['language']
     if args.targets == 'phones':
-        text = list(get_ipa(' '.join(text), language))
+        text = list(' '.join([get_ipa(t, language) for t in text]))
     mfcc = session.run(mfcc_op, {waveform_place: waveform[np.newaxis, :]})[0, :, :]
     vocabulary.update(text)
     with stats_mutex:
