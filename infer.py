@@ -30,6 +30,7 @@ def parse_args():
                         help='batch size')
     parser.add_argument('--num_channels', type=int, default=39,
                         help='number of input channels')
+    parser.add_argument('--delimiter', help='Symbols delimiter. Default: " "', type=str, default=' ')
 
     return parser.parse_args()
 
@@ -46,7 +47,7 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
     dataset = utils.process_dataset(
         dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
 
-    return dataset
+    return dataset.take(10)
 
 
 def main(args):
@@ -76,7 +77,7 @@ def main(args):
         predictions = [[vocab_list[x] for x in y['sample_ids']] + [utils.EOS]
                        for y in predictions]
 
-    predictions = [' '.join(y[:y.index(utils.EOS)]) for y in predictions]
+    predictions = [args.delimiter.join(y[:y.index(utils.EOS)]) for y in predictions]
 
     with open(args.save, 'w') as f:
         f.write('\n'.join(predictions))

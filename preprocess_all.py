@@ -18,7 +18,8 @@ stds = None
 total = 0
 par_handle = None
 session = tf.Session()
-mutex = Lock()
+tfrecord_mutex = Lock()
+stats_mutex = Lock()
 waveform_place = tf.placeholder(tf.float32, [None, None])
 mfcc_op = None
 
@@ -60,16 +61,19 @@ def build_features_and_vocabulary_fn(args, inputs):
     text = inputs['text']
     language = inputs['language']
     if args.targets == 'phones':
-        text = list(get_ipa(' '.join(text), language))
+        text = list(' '.join([get_ipa(t, language) for t in text]))
+        text = [x if x != ' ' else '<space>' for x in text]
     mfcc = session.run(mfcc_op, {waveform_place: waveform[np.newaxis, :]})[0, :, :]
     vocabulary.update(text)
-    if means is None:
-        means = np.mean(mfcc, axis=0)
-        stds = np.std(mfcc, axis=0)
-    else:
-        means += np.mean(mfcc, axis=0)
-        stds += np.std(mfcc, axis=0)
-    total += 1
+    if args.norm_file:
+        with stats_mutex:
+            if means is None:
+                means = np.mean(mfcc, axis=0)
+                stds = np.std(mfcc, axis=0)
+            else:
+                means += np.mean(mfcc, axis=0)
+                stds += np.std(mfcc, axis=0)
+            total += 1
     return {
         'mfcc': mfcc,
         'text': text
@@ -77,7 +81,7 @@ def build_features_and_vocabulary_fn(args, inputs):
 
 
 def write_tf_output(writer, inputs):
-    with mutex:
+    with tfrecord_mutex:
         writer.write(make_example(inputs['mfcc'], inputs['text']).SerializeToString())
     par_handle.update()
 
