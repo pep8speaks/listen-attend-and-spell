@@ -1,5 +1,6 @@
 import argparse
 import tensorflow as tf
+import pandas as pd
 
 import utils
 
@@ -66,6 +67,8 @@ def parse_args():
                         help='make projection layer output binary feature posteriors instead of phone posteriors')
     parser.add_argument('--output_ipa', action='store_true',
                         help='With --binary_outputs on, make the graph output phones and change sampling algorithm at training')
+    parser.add_argument('--binf_map', type=str, default='binf_map.csv',
+                        help='Path to CSV with phonemes to binary features map')
 
     return parser.parse_args()
 
@@ -94,7 +97,7 @@ def main(args):
         vocab_size = len(vocab_list)
         binf2phone = None
     else:
-        assert(False, 'Binary feature outputs are not supported yet.')
+        binf2phone = utils.load_binf2phone(args.binf_map).values
 
     config = tf.estimator.RunConfig(model_dir=args.model_dir)
     hparams = utils.create_hparams(
@@ -132,7 +135,9 @@ def main(args):
         model.train(
             input_fn=lambda: input_fn(
                 args.train, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size,
-                num_epochs=args.num_epochs))
+                num_epochs=args.num_epochs, binary_targets=args.binary_outputs,
+                labels_shape=[vocab_size - 2] if args.binary_outputs else [],
+                labels_dtype=tf.float32 if args.binary_outputs else tf.string))
 
 
 if __name__ == '__main__':
