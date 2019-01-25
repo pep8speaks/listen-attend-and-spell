@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 __all__ = [
     'read_dataset',
@@ -6,14 +7,14 @@ __all__ = [
 ]
 
 
-def read_dataset(filename, num_channels=39):
+def read_dataset(filename, num_channels=39, labels_shape=[], labels_dtype=tf.string):
     """Read data from tfrecord file."""
 
     def parse_fn(example_proto):
         """Parse function for reading single sequence example."""
         sequence_features = {
             'inputs': tf.FixedLenSequenceFeature(shape=[num_channels], dtype=tf.float32),
-            'labels': tf.FixedLenSequenceFeature(shape=[], dtype=tf.string)
+            'labels': tf.FixedLenSequenceFeature(labels_shape, labels_dtype)
         }
 
         context, sequence = tf.parse_single_sequence_example(
@@ -30,81 +31,128 @@ def read_dataset(filename, num_channels=39):
 
 
 def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
-                    batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False):
+    batch_size=8, num_epochs=1, num_parallel_calls=32, is_infer=False,
+    binary_targets=False, labels_shape=[]):
 
-    output_buffer_size = batch_size * 1000
+    try:
+        use_labels = len(dataset.output_classes) == 2
+    except TypeError:
+        use_labels = False
 
-    sos_id = tf.cast(vocab_table.lookup(tf.constant(sos)), tf.int32)
-    eos_id = tf.cast(vocab_table.lookup(tf.constant(eos)), tf.int32)
+    if not use_labels:
+        dataset = dataset.map(lambda inputs: {
+            'encoder_inputs': tf.cast(inputs, tf.float32),
+            'source_sequence_length': tf.shape(inputs)[0]
+        })
+        dataset = dataset.padded_batch(
+            batch_size,
+            padded_shapes=dataset.output_shapes,
+            padding_values={
+                    'encoder_inputs': 0.0,
+                    'source_sequence_length': 0,
+                })
+        if means is not None and stds is not None:
+            print('Applying normalization.')
+            means_const = tf.constant(means, dtype=tf.float32)
+            stds_const = tf.constant(stds, dtype=tf.float32)
+            dataset = dataset.map(
+                lambda inputs: (inputs - means_const) / stds_const,
+                num_parallel_calls=num_parallel_calls)
 
-    dataset = dataset.repeat(num_epochs)
+    else:
+        output_buffer_size = batch_size * 1000
 
-    if not is_infer:
-        dataset = dataset.shuffle(output_buffer_size)
+        if not binary_targets:
+            sos_id = tf.cast(vocab_table.lookup(tf.constant(sos)), tf.int32)
+            eos_id = tf.cast(vocab_table.lookup(tf.constant(eos)), tf.int32)
 
-    dataset = dataset.map(
-        lambda inputs, labels: (inputs,
-                                vocab_table.lookup(labels)),
-        num_parallel_calls=num_parallel_calls)
+        dataset = dataset.repeat(num_epochs)
 
-    dataset = dataset.map(
-        lambda inputs, labels: (tf.cast(inputs, tf.float32),
-                                tf.cast(labels, tf.int32)),
-        num_parallel_calls=num_parallel_calls)
+        if not is_infer:
+            dataset = dataset.shuffle(output_buffer_size)
 
-    if means is not None and stds is not None:
-        print('Applying normalization.')
-        means_const = tf.constant(means, dtype=tf.float32)
-        stds_const = tf.constant(stds, dtype=tf.float32)
+        if not binary_targets:
+            dataset = dataset.map(
+                lambda inputs, labels: (inputs,
+                                        vocab_table.lookup(labels)),
+                num_parallel_calls=num_parallel_calls)
+
+        if means is not None and stds is not None:
+            print('Applying normalization.')
+            means_const = tf.constant(means, dtype=tf.float32)
+            stds_const = tf.constant(stds, dtype=tf.float32)
+            dataset = dataset.map(
+                lambda inputs, labels: ((inputs - means_const) / stds_const,
+                                        labels),
+                num_parallel_calls=num_parallel_calls)
+
         dataset = dataset.map(
-            lambda inputs, labels: ((inputs - means_const) / stds_const,
-                                    labels),
+            lambda inputs, labels: (tf.cast(inputs, tf.float32),
+                                    tf.cast(labels, tf.int32)),
             num_parallel_calls=num_parallel_calls)
 
-    dataset = dataset.map(
-        lambda inputs, labels: (inputs,
-                                tf.concat(([sos_id], labels), 0),
-                                tf.concat((labels, [eos_id]), 0)),
-        num_parallel_calls=num_parallel_calls)
+        if binary_targets:
+            sos_id = np.zeros((1, labels_shape[0] + 2), dtype=np.int32)
+            sos_id[0, -2] = 1
+            eos_id = np.zeros((1, labels_shape[0] + 2), dtype=np.int32)
+            eos_id[0, -1] = 1
 
-    dataset = dataset.map(
-        lambda inputs, labels_in, labels_out: (inputs,
-                                               labels_in,
-                                               labels_out,
-                                               tf.shape(inputs)[0],
-                                               tf.size(labels_in)),
-        num_parallel_calls=num_parallel_calls)
+            dataset = dataset.map(
+                lambda inputs, labels: (inputs, tf.concat((labels,
+                    tf.zeros((tf.shape(labels)[0], 2), tf.int32)), 1)),
+                    num_parallel_calls=num_parallel_calls)
 
-    dataset = dataset.map(
-        lambda inputs, labels_in, labels_out,
-        source_sequence_length, target_sequence_length: (
-            {
-                'encoder_inputs': inputs,
-                'source_sequence_length': source_sequence_length,
-            },
-            {
-                'targets_inputs': labels_in,
-                'targets_outputs': labels_out,
-                'target_sequence_length': target_sequence_length
-            }))
+            dataset = dataset.map(
+                lambda inputs, labels: (inputs,
+                                        tf.concat((sos_id, labels), 0),
+                                        tf.concat((labels, eos_id), 0),
+                                    ),
+                num_parallel_calls=num_parallel_calls)
+        else:
+            dataset = dataset.map(
+                lambda inputs, labels: (inputs,
+                                        tf.concat(([sos_id], labels), 0),
+                                        tf.concat((labels, [eos_id]), 0)),
+                num_parallel_calls=num_parallel_calls)
 
-    dataset = dataset.padded_batch(
-        batch_size,
-        padded_shapes=dataset.output_shapes,
-        padding_values=(
-            {
-                'encoder_inputs': 0.0,
-                'source_sequence_length': 0,
-            },
-            {
-                'targets_inputs': eos_id,
-                'targets_outputs': eos_id,
-                'target_sequence_length': 0,
-            }))
+        dataset = dataset.map(
+            lambda inputs, labels_in, labels_out: (inputs,
+                                                labels_in,
+                                                labels_out,
+                                                tf.shape(inputs)[0],
+                                                tf.shape(labels_in)[0] if binary_targets else tf.size(labels_in)),
+            num_parallel_calls=num_parallel_calls)
 
-    '''
-    dataset = dataset.filter(lambda features, labels: tf.equal(
-        tf.shape(features['source_sequence_length'])[0], batch_size))
-    '''
+        dataset = dataset.map(
+            lambda inputs, labels_in, labels_out,
+            source_sequence_length, target_sequence_length: (
+                {
+                    'encoder_inputs': inputs,
+                    'source_sequence_length': source_sequence_length,
+                },
+                {
+                    'targets_inputs': labels_in,
+                    'targets_outputs': labels_out,
+                    'target_sequence_length': target_sequence_length
+                }))
+
+        dataset = dataset.padded_batch(
+            batch_size,
+            padded_shapes=dataset.output_shapes,
+            padding_values=(
+                {
+                    'encoder_inputs': 0.0,
+                    'source_sequence_length': 0,
+                },
+                {
+                    'targets_inputs': 0 if binary_targets else eos_id,
+                    'targets_outputs': 0 if binary_targets else eos_id,
+                    'target_sequence_length': 0,
+                }))
+
+        '''
+        dataset = dataset.filter(lambda features, labels: tf.equal(
+            tf.shape(features['source_sequence_length'])[0], batch_size))
+        '''
 
     return dataset

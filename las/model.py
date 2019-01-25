@@ -1,9 +1,11 @@
 import tensorflow as tf
+import tensorflow.contrib as tf_contrib
 
 from tensorflow.python.util import nest
 
 from las.ops import lstm_cell
 from las.ops import pyramidal_bilstm
+from utils import TrainingSigmoidHelper, ScheduledSigmoidHelper, DenseBinfDecoder
 
 __all__ = [
     'listener',
@@ -66,7 +68,7 @@ class AttentionMultiCell(tf.nn.rnn_cell.MultiRNNCell):
         return cur_inp, tuple(new_states)
 
 
-class CustomAttention(tf.contrib.seq2seq.LuongAttention):
+class CustomAttention(tf_contrib.seq2seq.LuongAttention):
     def __init__(self,
                  num_units,
                  memory,
@@ -140,15 +142,24 @@ def attend(encoder_outputs,
 
     memory = encoder_outputs
 
+    att_kwargs = {}
     if hparams.attention_type == 'luong':
-        attention_fn = tf.contrib.seq2seq.LuongAttention
+        attention_fn = tf_contrib.seq2seq.LuongAttention
     elif hparams.attention_type == 'bahdanau':
-        attention_fn = tf.contrib.seq2seq.BahdanauAttention
+        attention_fn = tf_contrib.seq2seq.BahdanauAttention
+    elif hparams.attention_type == 'luong_monotonic':
+        attention_fn = tf_contrib.seq2seq.LuongMonotonicAttention
+    elif hparams.attention_type == 'bahdanau_monotonic':
+        attention_fn = tf_contrib.seq2seq.BahdanauMonotonicAttention
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            att_kwargs['sigmoid_noise'] = 1.0
+        else:
+            att_kwargs['mode'] = 'hard'
     elif hparams.attention_type == 'custom':
         attention_fn = CustomAttention
 
     attention_mechanism = attention_fn(
-        hparams.num_units, memory, source_sequence_length)
+        hparams.num_units, memory, source_sequence_length, **att_kwargs)
 
     cell_list = []
     for layer in range(hparams.num_layers):
@@ -162,7 +173,7 @@ def attend(encoder_outputs,
     if hparams.bottom_only:
         attention_cell = cell_list.pop(0)
 
-        attention_cell = tf.contrib.seq2seq.AttentionWrapper(
+        attention_cell = tf_contrib.seq2seq.AttentionWrapper(
             attention_cell, attention_mechanism,
             attention_layer_size=hparams.attention_layer_size,
             alignment_history=alignment_history)
@@ -171,7 +182,7 @@ def attend(encoder_outputs,
     else:
         decoder_cell = tf.nn.rnn_cell.MultiRNNCell(cell_list)
 
-        decoder_cell = tf.contrib.seq2seq.AttentionWrapper(
+        decoder_cell = tf_contrib.seq2seq.AttentionWrapper(
             decoder_cell, attention_mechanism,
             attention_layer_size=hparams.attention_layer_size,
             alignment_history=alignment_history)
@@ -185,17 +196,18 @@ def speller(encoder_outputs,
             source_sequence_length,
             target_sequence_length,
             mode,
-            hparams):
+            hparams,
+            binf_embedding=None):
 
     batch_size = tf.shape(encoder_outputs)[0]
     beam_width = hparams.beam_width
 
     if mode == tf.estimator.ModeKeys.PREDICT and beam_width > 0:
-        encoder_outputs = tf.contrib.seq2seq.tile_batch(
+        encoder_outputs = tf_contrib.seq2seq.tile_batch(
             encoder_outputs, multiplier=beam_width)
-        source_sequence_length = tf.contrib.seq2seq.tile_batch(
+        source_sequence_length = tf_contrib.seq2seq.tile_batch(
             source_sequence_length, multiplier=beam_width)
-        encoder_state = tf.contrib.seq2seq.tile_batch(
+        encoder_state = tf_contrib.seq2seq.tile_batch(
             encoder_state, multiplier=beam_width)
         batch_size = batch_size * beam_width
 
@@ -204,23 +216,31 @@ def speller(encoder_outputs,
         if hparams.embedding_size != 0:
             target_embedding = tf.get_variable(
                 'target_embedding', [
-                    hparams.target_vocab_size, hparams.embedding_size],
-                dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
+                    hparams.target_vocab_size,
+                    hparams.embedding_size],
+                dtype=tf.float32, initializer=tf_contrib.layers.xavier_initializer())
 
             return tf.nn.embedding_lookup(target_embedding, ids)
+        elif hparams.binary_outputs:
+            if binf_embedding is None or mode == tf.estimator.ModeKeys.TRAIN:
+                return tf.cast(ids, tf.float32)
+            else:
+                return tf.nn.embedding_lookup(tf.transpose(binf_embedding), ids)
         else:
             return tf.one_hot(ids, hparams.target_vocab_size)
 
     decoder_cell = attend(
         encoder_outputs, source_sequence_length, mode, hparams)
 
-    projection_layer = tf.layers.Dense(
-        hparams.target_vocab_size, use_bias=True, name='projection_layer')
+    projection_layer = DenseBinfDecoder(
+        hparams.target_vocab_size,
+        binf_to_ipa=binf_embedding if mode != tf.estimator.ModeKeys.TRAIN else None,
+        use_bias=True, name='projection_layer')
 
     if hparams.pass_hidden_state and hparams.bottom_only:
         initial_state = tuple(
             zs.clone(cell_state=es)
-            if isinstance(zs, tf.contrib.seq2seq.AttentionWrapperState) else es
+            if isinstance(zs, tf_contrib.seq2seq.AttentionWrapperState) else es
             for zs, es in zip(
                 decoder_cell.zero_state(batch_size, tf.float32), encoder_state))
     else:
@@ -236,21 +256,28 @@ def speller(encoder_outputs,
         decoder_inputs = embedding_fn(decoder_inputs)
 
         if hparams.sampling_probability > 0.0:
-            helper = tf.contrib.seq2seq.ScheduledEmbeddingTrainingHelper(
-                decoder_inputs, target_sequence_length,
-                embedding_fn, hparams.sampling_probability)
+            if hparams.binary_outputs:
+                helper = ScheduledSigmoidHelper(decoder_inputs, target_sequence_length,
+                    embedding_fn, hparams.sampling_probability, binf_to_ipa=binf_embedding)
+            else:
+                helper = tf_contrib.seq2seq.ScheduledEmbeddingTrainingHelper(
+                    decoder_inputs, target_sequence_length,
+                    embedding_fn, hparams.sampling_probability)
         else:
-            helper = tf.contrib.seq2seq.TrainingHelper(
-                decoder_inputs, target_sequence_length)
-
-        decoder = tf.contrib.seq2seq.BasicDecoder(
+            if hparams.binary_outputs:
+                helper = TrainingSigmoidHelper(decoder_inputs, target_sequence_length,
+                                               binf_to_ipa=binf_embedding)
+            else:
+                helper = tf_contrib.seq2seq.TrainingHelper(
+                    decoder_inputs, target_sequence_length)
+        decoder = tf_contrib.seq2seq.BasicDecoder(
             decoder_cell, helper, initial_state, output_layer=projection_layer)
 
     elif mode == tf.estimator.ModeKeys.PREDICT and beam_width > 0:
         start_tokens = tf.fill(
             [tf.div(batch_size, beam_width)], hparams.sos_id)
 
-        decoder = tf.contrib.seq2seq.BeamSearchDecoder(
+        decoder = tf_contrib.seq2seq.BeamSearchDecoder(
             cell=decoder_cell,
             embedding=embedding_fn,
             start_tokens=start_tokens,
@@ -258,16 +285,33 @@ def speller(encoder_outputs,
             initial_state=initial_state,
             beam_width=beam_width,
             output_layer=projection_layer)
+    elif hparams.binary_outputs and binf_embedding is None:
+        start_inputs = tf.concat(
+            (tf.zeros([batch_size, hparams.target_vocab_size - 2]),
+             tf.ones([batch_size, 1]),
+             tf.zeros([batch_size, 1])),
+             axis=1
+            )
+        helper = tf_contrib.seq2seq.InferenceHelper(
+            sample_fn=lambda x: tf.round(tf.sigmoid(x)),
+            # sample_fn=lambda x: tf.sigmoid(x),    #TODO: experiment with non-binarlized outputs
+            sample_shape=[hparams.target_vocab_size],
+            sample_dtype=tf.float32,
+            next_inputs_fn=embedding_fn,
+            start_inputs=start_inputs,
+            end_fn=lambda x: tf.greater(x[..., -1], 0.5))
+        decoder = tf_contrib.seq2seq.BasicDecoder(
+            decoder_cell, helper, initial_state, output_layer=projection_layer)
     else:
         start_tokens = tf.fill([batch_size], hparams.sos_id)
 
-        helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
+        helper = tf_contrib.seq2seq.GreedyEmbeddingHelper(
             embedding_fn, start_tokens, hparams.eos_id)
 
-        decoder = tf.contrib.seq2seq.BasicDecoder(
+        decoder = tf_contrib.seq2seq.BasicDecoder(
             decoder_cell, helper, initial_state, output_layer=projection_layer)
 
-    decoder_outputs, final_context_state, final_sequence_length = tf.contrib.seq2seq.dynamic_decode(
+    decoder_outputs, final_context_state, final_sequence_length = tf_contrib.seq2seq.dynamic_decode(
         decoder, maximum_iterations=maximum_iterations)
 
     return decoder_outputs, final_context_state, final_sequence_length

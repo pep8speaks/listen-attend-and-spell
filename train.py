@@ -62,12 +62,18 @@ def parse_args():
                         help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.2,
                         help='dropout rate of rnn cell')
+    parser.add_argument('--binary_outputs', action='strore_true',
+                        help='make projection layer output binary feature posteriors instead of phone posteriors')
+    parser.add_argument('--output_ipa', action='store_true',
+                        help='With --binary_outputs on, make the graph output phones and change sampling algorithm at training')
 
     return parser.parse_args()
 
 
-def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1):
-    dataset = utils.read_dataset(dataset_filename, num_channels)
+def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1,
+    labels_shape=[], labels_dtype=tf.string, binary_targets=False):
+    dataset = utils.read_dataset(dataset_filename, num_channels, labels_shape=labels_shape,
+        labels_dtype=labels_dtype)
     vocab_table = utils.create_vocab_table(vocab_filename)
 
     if norm_filename is not None:
@@ -76,21 +82,31 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
         means = stds = None
 
     dataset = utils.process_dataset(
-        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
+        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs,
+        binary_targets=binary_targets, labels_shape=labels_shape)
 
     return dataset
 
 
 def main(args):
     vocab_list = utils.load_vocab(args.vocab)
-    vocab_size = len(vocab_list)
+    if not args.binary_outputs:
+        vocab_size = len(vocab_list)
+        binf2phone = None
+    else:
+        assert(False, 'Binary feature outputs are not supported yet.')
 
     config = tf.estimator.RunConfig(model_dir=args.model_dir)
     hparams = utils.create_hparams(
         args, vocab_size, utils.SOS_ID, utils.EOS_ID)
 
+    def model_fn(features, labels,
+        mode, config, params):
+        return las_model_fn(features, labels, mode, config, params,
+            binf2phone=binf2phone)
+
     model = tf.estimator.Estimator(
-        model_fn=las_model_fn,
+        model_fn=model_fn,
         config=config,
         params=hparams)
 
@@ -98,12 +114,16 @@ def main(args):
         train_spec = tf.estimator.TrainSpec(
             input_fn=lambda: input_fn(
                 args.train, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size,
-                num_epochs=args.num_epochs))
+                num_epochs=args.num_epochs, binary_targets=args.binary_outputs,
+                labels_shape=[vocab_size - 2] if args.binary_outputs else [],
+                labels_dtype=tf.float32 if args.binary_outputs else tf.string))
 
         eval_spec = tf.estimator.EvalSpec(
             input_fn=lambda: input_fn(
                 args.valid or args.train, args.vocab, args.norm, num_channels=args.num_channels,
-                batch_size=args.batch_size),
+                batch_size=args.batch_size, binary_targets=args.binary_outputs,
+                labels_shape=[vocab_size - 2] if args.binary_outputs else [],
+                labels_dtype=tf.float32 if args.binary_outputs else tf.string),
             start_delay_secs=60,
             throttle_secs=args.eval_secs)
 

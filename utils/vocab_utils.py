@@ -1,4 +1,5 @@
 import tensorflow as tf
+import pickle
 
 __all__ = [
     'create_vocab_table',
@@ -21,11 +22,16 @@ EOS_ID = 2
 
 
 def load_vocab(filename):
-    with open(filename, 'r') as f:
-        vocab_list = [vocab.strip('\r\n ') for vocab in f]
-        vocab_list = [UNK, SOS, EOS] + vocab_list
+    if not '.pickle' in filename:
+        with open(filename, 'r') as f:
+            vocab_list = [vocab.strip('\r\n ') for vocab in f]
+            vocab_list = [UNK, SOS, EOS] + vocab_list
+    else:
+        with open(filename, 'rb') as f:
+            vocab_list = pickle.load(f)
+            vocab_list = [UNK, SOS, EOS] + vocab_list
 
-        return vocab_list
+    return vocab_list
 
 
 def create_vocab_table(filename):
