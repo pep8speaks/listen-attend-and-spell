@@ -92,15 +92,8 @@ def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
             num_parallel_calls=num_parallel_calls)
 
         if binary_targets:
-            sos_id = np.zeros((1, labels_shape[0] + 2), dtype=np.int32)
-            sos_id[0, -2] = 1
-            eos_id = np.zeros((1, labels_shape[0] + 2), dtype=np.int32)
-            eos_id[0, -1] = 1
-
-            dataset = dataset.map(
-                lambda inputs, labels: (inputs, tf.concat((labels,
-                    tf.zeros((tf.shape(labels)[0], 2), tf.int32)), 1)),
-                    num_parallel_calls=num_parallel_calls)
+            sos_id = sos[np.newaxis, :]
+            eos_id = eos[np.newaxis, :]
 
             dataset = dataset.map(
                 lambda inputs, labels: (inputs,
