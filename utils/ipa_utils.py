@@ -4,7 +4,7 @@ import itertools
 import pandas as pd
 import numpy as np
 
-from vocab_utils import SOS, EOS
+from utils.vocab_utils import SOS, EOS
 
 
 __all__ = [
@@ -83,7 +83,16 @@ def load_binf2phone(filename, spe_only=False):
 def ipa2binf(ipa, binf2phone):
     binf = np.empty((len(ipa), len(binf2phone.index)), np.float32)
     for k, phone in enumerate(ipa):
-        if ipa not in binf2phone.columns:
-            raise IPAError(ipa)
-        binf[k, :] = binf2phone[ipa].values
+        if phone in binf2phone.columns:
+            binf_vec = binf2phone[phone].values
+        elif len(phone) > 1:
+            try:
+                binf_vec = np.zeros((len(binf2phone.index)), np.int)
+                for p in phone:
+                    binf_vec = np.logical_or(binf_vec, binf2phone[p].values).astype(np.float32)
+            except KeyError:
+                raise IPAError(phone)
+        else:
+            raise IPAError(phone)
+        binf[k, :] = binf_vec
     return binf

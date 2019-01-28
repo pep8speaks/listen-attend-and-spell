@@ -25,11 +25,18 @@ mfcc_op = None
 binf2phone = None
 
 def make_example(input, label):
-    feature_lists = tf.train.FeatureLists(feature_list={
-        'labels': tf.train.FeatureList(feature=[
+    if isinstance(label, list):
+        label_list = tf.train.FeatureList(feature=[
             tf.train.Feature(bytes_list=tf.train.BytesList(value=[p.encode()]))
             for p in label
-        ]),
+        ])
+    else:
+        label_list = tf.train.FeatureList(feature=[
+            tf.train.Feature(float_list=tf.train.FloatList(value=f))
+            for f in label
+        ])
+    feature_lists = tf.train.FeatureLists(feature_list={
+        'labels': label_list,
         'inputs': tf.train.FeatureList(feature=[
             tf.train.Feature(float_list=tf.train.FloatList(value=f))
             for f in input
@@ -60,10 +67,12 @@ def build_features_and_vocabulary_fn(args, inputs):
     waveform = inputs['waveform']
     text = inputs['text']
     language = inputs['language']
+    binf = None
     if args.targets in ('phones', 'binary_features'):
+        text = ' '.join(text)
         text = get_ipa(text, language)
         if args.targets == 'binary_features':
-            text = ipa2binf(text, binf2phone)
+            binf = ipa2binf(text, binf2phone)
     mfcc = session.run(mfcc_op, {waveform_place: waveform[np.newaxis, :]})[0, :, :]
     vocabulary.update(text)
     if args.norm_file:
@@ -77,7 +86,7 @@ def build_features_and_vocabulary_fn(args, inputs):
             total += 1
     return {
         'mfcc': mfcc,
-        'text': text
+        'text': binf if args.targets == 'binary_features' else text
     }
 
 
