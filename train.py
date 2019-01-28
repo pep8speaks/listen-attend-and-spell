@@ -67,7 +67,7 @@ def parse_args():
                         help='make projection layer output binary feature posteriors instead of phone posteriors')
     parser.add_argument('--output_ipa', action='store_true',
                         help='With --binary_outputs on, make the graph output phones and change sampling algorithm at training')
-    parser.add_argument('--binf_map', type=str, default='binf_map.csv',
+    parser.add_argument('--binf_map', type=str, default='misc/binf_map.csv',
                         help='Path to CSV with phonemes to binary features map')
 
     return parser.parse_args()
