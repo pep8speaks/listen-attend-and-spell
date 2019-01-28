@@ -83,16 +83,16 @@ def text_ae_model_fn(features, labels, mode, config, params):
         targets = labels['targets_outputs']
         target_sequence_length = labels['target_sequence_length']
 
-    tf.logging.info('Building listener')
+    tf.logging.info('Building reader')
 
-    with tf.variable_scope('listener'):
+    with tf.variable_scope('reader'):
         (encoder_outputs, source_sequence_length), encoder_state = text_ae.model.reader(
             encoder_inputs, source_sequence_length, mode,
             params.encoder, params.decoder.target_vocab_size)
 
-    tf.logging.info('Building speller')
+    tf.logging.info('Building writer')
 
-    with tf.variable_scope('speller'):
+    with tf.variable_scope('writer'):
         decoder_outputs, final_context_state, final_sequence_length = text_ae.model.speller(
             encoder_outputs, encoder_state, decoder_inputs,
             source_sequence_length, target_sequence_length,
