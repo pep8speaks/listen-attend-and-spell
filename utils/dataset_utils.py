@@ -53,7 +53,7 @@ def process_dataset(dataset, vocab_table, sos, eos, means=None, stds=None,
         num_parallel_calls=num_parallel_calls)
 
     if means is not None and stds is not None:
-        print('Applying normalization.')
+        tf.logging.info('Applying normalization.')
         means_const = tf.constant(means, dtype=tf.float32)
         stds_const = tf.constant(stds, dtype=tf.float32)
         dataset = dataset.map(

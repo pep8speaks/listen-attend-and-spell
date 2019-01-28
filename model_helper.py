@@ -3,6 +3,7 @@ import tensorflow as tf
 
 import las
 import utils
+import text_ae.model
 
 __all__ = [
     'las_model_fn',
@@ -68,6 +69,14 @@ def compute_loss(logits, targets, final_sequence_length, target_sequence_length,
     return loss
 
 
+def compute_emb_loss(encoder_state, reader_encoder_state):
+    emb_loss = 0
+    for enc_s, enc_r in zip(encoder_state[-1], reader_encoder_state[-1]):
+        emb_loss += tf.losses.mean_squared_error(enc_s.c, enc_r.c)
+        emb_loss += tf.losses.mean_squared_error(enc_s.h, enc_r.h)
+    return emb_loss
+
+
 def las_model_fn(features,
                  labels,
                  mode,
@@ -85,6 +94,42 @@ def las_model_fn(features,
         decoder_inputs = labels['targets_inputs']
         targets = labels['targets_outputs']
         target_sequence_length = labels['target_sequence_length']
+
+    text_loss = 0
+    text_edit_distance = reader_encoder_state = None
+    if params.use_text:
+        tf.logging.info('Building reader')
+
+        with tf.variable_scope('reader'):
+            (reader_encoder_outputs, reader_source_sequence_length), reader_encoder_state = text_ae.model.reader(
+                decoder_inputs, target_sequence_length, mode,
+                params.encoder, params.decoder.target_vocab_size)
+
+        tf.logging.info('Building writer')
+
+        with tf.variable_scope('writer'):
+            writer_decoder_outputs, writer_final_context_state, writer_final_sequence_length = text_ae.model.speller(
+                reader_encoder_outputs, reader_encoder_state, decoder_inputs,
+                reader_source_sequence_length, target_sequence_length,
+                mode, params.decoder)
+
+        with tf.name_scope('text_prediciton'):
+            logits = writer_decoder_outputs.rnn_output
+            sample_ids = tf.to_int32(tf.argmax(logits, -1))
+
+        with tf.name_scope('text_metrics'):
+            text_edit_distance = utils.edit_distance(
+                sample_ids, targets, utils.EOS_ID, params.mapping)
+
+            metrics = {
+                'text_edit_distance': tf.metrics.mean(text_edit_distance),
+            }
+
+        tf.summary.scalar('text_edit_distance', metrics['text_edit_distance'][1])
+
+        with tf.name_scope('text_cross_entropy'):
+            text_loss = compute_loss(
+                logits, targets, writer_final_sequence_length, target_sequence_length, mode)
 
     tf.logging.info('Building listener')
 
@@ -129,6 +174,12 @@ def las_model_fn(features,
         loss = compute_loss(
             logits, targets, final_sequence_length, target_sequence_length, mode)
 
+    emb_loss = 0
+    if params.use_text:
+        with tf.name_scope('embeddings_loss'):
+            emb_loss = compute_emb_loss(encoder_state, reader_encoder_state)
+        loss = loss + 0.5 * text_loss + params.emb_weight * emb_loss
+
     if mode == tf.estimator.ModeKeys.EVAL:
         with tf.name_scope('alignment'):
             attention_images = utils.create_attention_images(
@@ -142,22 +193,31 @@ def las_model_fn(features,
             output_dir=os.path.join(config.model_dir, 'eval'),
             summary_op=attention_summary)
 
-        logging_hook = tf.train.LoggingTensorHook({
+        log_data = {
             'edit_distance': tf.reduce_mean(edit_distance),
             'max_edit_distance': tf.reduce_max(edit_distance),
             'min_edit_distance': tf.reduce_min(edit_distance)
-        }, every_n_iter=10)
+        }
+        if params.use_text:
+            log_data['text_edit_distance'] = tf.reduce_mean(text_edit_distance)
+            log_data['emb_loss'] = tf.reduce_mean(emb_loss)
+        logging_hook = tf.train.LoggingTensorHook(log_data, every_n_iter=10)
 
-        return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=metrics, evaluation_hooks=[logging_hook, eval_summary_hook])
+        return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=metrics,
+                                          evaluation_hooks=[logging_hook, eval_summary_hook])
 
     with tf.name_scope('train'):
         optimizer = tf.train.AdamOptimizer(params.learning_rate)
         train_op = optimizer.minimize(
             loss, global_step=tf.train.get_global_step())
 
-    logging_hook = tf.train.LoggingTensorHook({
+    train_log_data = {
         'loss': loss,
         'edit_distance': tf.reduce_mean(edit_distance)
-    }, every_n_secs=10)
+    }
+    if params.use_text:
+        train_log_data['text_edit_distance'] = tf.reduce_mean(text_edit_distance)
+        train_log_data['emb_loss'] = tf.reduce_mean(emb_loss)
+    logging_hook = tf.train.LoggingTensorHook(train_log_data, every_n_secs=10)
 
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op, training_hooks=[logging_hook])
