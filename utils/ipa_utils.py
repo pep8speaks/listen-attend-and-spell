@@ -67,10 +67,14 @@ def get_ipa(text, language, remove_all_diacritics=False):
         raise IPAError(ipa)
     return _postprocessing(ipa, remove_all_diacritics)
 
-def load_binf2phone(filename, spe_only=False):
+def load_binf2phone(filename, spe_only=False, vocab_list=None):
     binf2phone = pd.read_csv(filename, index_col=0)
     if spe_only:
         binf2phone = binf2phone.loc[binf2phone.index.isin(SPE_NAMES), :]
+    if vocab_list is not None:
+        # Leave only phonemes from the vocabluary
+        new_cols = [col for col in binf2phone.columns if col in vocab_list]
+        binf2phone = binf2phone[new_cols]
     binf2phone.insert(0, EOS, 0)
     binf2phone.insert(0, SOS, 0)
     bottom_df = pd.DataFrame(np.zeros([2, binf2phone.shape[1]]),

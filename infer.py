@@ -76,7 +76,7 @@ def main(args):
     if not hparams.decoder.binary_outputs:
         vocab_size = len(vocab_list)
     else:
-        binf2phone = utils.load_binf2phone(args.binf_map, args.spe)
+        binf2phone = utils.load_binf2phone(args.binf_map, args.spe, vocab_list)
         vocab_size = len(binf2phone.index)
         vocab_list = binf2phone.columns
         if args.output_ipa:
