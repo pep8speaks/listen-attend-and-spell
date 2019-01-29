@@ -197,7 +197,7 @@ def las_model_fn(features,
         binf_to_ipa_tiled = tf.cast(
             tf.tile(binf_embedding[None, :, :], [tf.shape(targets)[0], 1, 1]), tf.int32)
         targets_transformed = tf.cast(
-            tf.argmax(tf.matmul(targets, binf_to_ipa_tiled), -1), tf.int32)
+            tf.argmax(tf.matmul(targets, binf_to_ipa_tiled) + tf.matmul(1 - targets, 1 - binf_to_ipa_tiled), -1), tf.int32)
     else:
         targets_transformed = targets
 
