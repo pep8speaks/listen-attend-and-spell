@@ -58,7 +58,7 @@ def get_default_hparams():
     return hparams
 
 
-def create_hparams(args, target_vocab_size, sos_id=1, eos_id=2):
+def create_hparams(args, target_vocab_size=None, sos_id=1, eos_id=2):
     hparams = get_default_hparams()
     hparams_file = os.path.join(args.model_dir, 'hparams.json')
 
@@ -70,6 +70,7 @@ def create_hparams(args, target_vocab_size, sos_id=1, eos_id=2):
             if name not in hparams_dict:
                 hparams_dict[name] = value
     else:
+        assert(target_vocab_size is not None, 'Target vocabulary size is not specified.')
         hparams_dict = {
             **vars(args),
             **{'sos_id': sos_id, 'eos_id': eos_id, 'target_vocab_size': target_vocab_size},

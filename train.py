@@ -68,6 +68,7 @@ def parse_args():
                         help='With --binary_outputs on, make the graph output phones and change sampling algorithm at training')
     parser.add_argument('--binf_map', type=str, default='misc/binf_map.csv',
                         help='Path to CSV with phonemes to binary features map')
+    parser.add_argument('--spe', help='Use only SPE features', action='store_true')
 
     return parser.parse_args()
 
@@ -103,7 +104,7 @@ def main(args):
     if not args.binary_outputs:
         vocab_size = len(vocab_list)
     else:
-        binf2phone = utils.load_binf2phone(args.binf_map)
+        binf2phone = utils.load_binf2phone(args.binf_map, args.spe)
         vocab_size = len(binf2phone.index)
         if args.output_ipa:
             binf2phone_np = binf2phone.values
