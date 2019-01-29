@@ -64,6 +64,7 @@ def parse_args():
                         help='dropout rate of rnn cell')
     parser.add_argument('--use_text', action='store_true', help='use textual information for encoder regularization')
     parser.add_argument('--emb_weight', type=float, default=0.1, help='encoder regularization weight')
+    parser.add_argument('--text_weight', type=float, default=0.5, help='text task weight')
 
     return parser.parse_args()
 

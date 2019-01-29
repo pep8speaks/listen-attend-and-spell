@@ -31,6 +31,7 @@ def get_default_hparams():
         learning_rate=1e-3,
         dropout=0.2,
         emb_weight=0.1,
+        text_weight=0.5,
         use_text=False,
 
         # encoder setting
@@ -99,6 +100,7 @@ def get_encoder_decoder_hparams(hparams):
     dropout = hparams.pop_hparam('dropout')
     mapping = hparams.pop_hparam('mapping')
     emb_weight = hparams.pop_hparam('emb_weight')
+    text_weight = hparams.pop_hparam('text_weight')
     use_text = hparams.pop_hparam('use_text')
 
     encoder_hparams = HParams(
@@ -119,6 +121,7 @@ def get_encoder_decoder_hparams(hparams):
         learning_rate=learning_rate,
         mapping=mapping,
         emb_weight=emb_weight,
+        text_weight=text_weight,
         use_text=use_text,
         encoder=encoder_hparams,
         decoder=decoder_hparams)

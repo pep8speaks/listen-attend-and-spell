@@ -70,10 +70,16 @@ def compute_loss(logits, targets, final_sequence_length, target_sequence_length,
 
 
 def compute_emb_loss(encoder_state, reader_encoder_state):
-    emb_loss = 0
-    for enc_s, enc_r in zip(encoder_state[-1], reader_encoder_state[-1]):
-        emb_loss += tf.losses.mean_squared_error(enc_s.c, enc_r.c)
-        emb_loss += tf.losses.mean_squared_error(enc_s.h, enc_r.h)
+    try:
+        emb_loss = 0
+        for enc_s, enc_r in zip(encoder_state, reader_encoder_state):
+            emb_loss += tf.losses.mean_squared_error(enc_s.c, enc_r.c)
+            emb_loss += tf.losses.mean_squared_error(enc_s.h, enc_r.h)
+    except AttributeError:
+        emb_loss = 0
+        for enc_s, enc_r in zip(encoder_state, reader_encoder_state):
+            emb_loss += tf.losses.mean_squared_error(enc_s.c, enc_r[-1].c)
+            emb_loss += tf.losses.mean_squared_error(enc_s.h, enc_r[-1].h)
     return emb_loss
 
 
@@ -182,7 +188,7 @@ def las_model_fn(features,
     if params.use_text:
         with tf.name_scope('embeddings_loss'):
             emb_loss = compute_emb_loss(encoder_state, reader_encoder_state)
-        loss = loss + 0.5 * text_loss + params.emb_weight * emb_loss
+        loss = loss + params.text_weight * text_loss + params.emb_weight * emb_loss
 
     if mode == tf.estimator.ModeKeys.EVAL:
         with tf.name_scope('alignment'):

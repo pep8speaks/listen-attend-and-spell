@@ -1,6 +1,7 @@
 import argparse
 import os
 import tensorflow as tf
+from joblib import dump
 
 import utils
 
@@ -29,11 +30,12 @@ def parse_args():
     parser.add_argument('--num_channels', type=int, default=39,
                         help='number of input channels')
     parser.add_argument('--delimiter', help='Symbols delimiter. Default: " "', type=str, default=' ')
+    parser.add_argument('--take', help='Use this number of elements (0 for all).', type=int, default=0)
 
     return parser.parse_args()
 
 
-def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1):
+def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, take=0):
     dataset = utils.read_dataset(dataset_filename, num_channels)
     vocab_table = utils.create_vocab_table(vocab_filename)
 
@@ -43,9 +45,11 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
         means = stds = None
 
     dataset = utils.process_dataset(
-        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
+        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, 1)
 
-    return dataset.take(10)
+    if args.take > 0:
+        dataset = dataset.take(take)
+    return dataset
 
 
 def to_text(vocab_list, sample_ids):
@@ -70,7 +74,8 @@ def main(args):
 
     predictions = model.predict(
         input_fn=lambda: input_fn(
-            args.data, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1),
+            args.data, args.vocab, args.norm, num_channels=args.num_channels,
+            batch_size=args.batch_size, take=args.take),
         predict_keys=['sample_ids', 'embedding'])
 
     if args.beam_width > 0:
@@ -87,6 +92,9 @@ def main(args):
     save_to = os.path.join(args.model_dir, 'infer.txt')
     with open(save_to, 'w') as f:
         f.write('\n'.join(p['transcription'] for p in predictions))
+
+    save_to = os.path.join(args.model_dir, 'infer.dmp')
+    dump(predictions, save_to)
 
 
 if __name__ == '__main__':
