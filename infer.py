@@ -1,5 +1,5 @@
 import argparse
-import numpy as np
+import os
 import tensorflow as tf
 
 import utils
@@ -21,8 +21,6 @@ def parse_args():
                         help='normalization params')
     parser.add_argument('--model_dir', type=str, required=True,
                         help='path of imported model')
-    parser.add_argument('--save', type=str, required=True,
-                        help='path of saving inference results')
 
     parser.add_argument('--beam_width', type=int, default=0,
                         help='number of beams (default 0: using greedy decoding)')
@@ -50,6 +48,11 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
     return dataset.take(10)
 
 
+def to_text(vocab_list, sample_ids):
+    sym_list = [vocab_list[x] for x in sample_ids] + [utils.EOS]
+    return args.delimiter.join(sym_list[:sym_list.index(utils.EOS)])
+
+
 def main(args):
     vocab_list = utils.load_vocab(args.vocab)
     vocab_size = len(vocab_list)
@@ -68,19 +71,22 @@ def main(args):
     predictions = model.predict(
         input_fn=lambda: input_fn(
             args.data, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1),
-        predict_keys='sample_ids')
+        predict_keys=['sample_ids', 'embedding'])
 
     if args.beam_width > 0:
-        predictions = [vocab_list[y['sample_ids'][:, 0]].tolist() + [utils.EOS]
-                       for y in predictions]
+        predictions = [{
+            'transcription': to_text(vocab_list, y['sample_ids'][:, 0]),
+            'embedding': y['embedding']
+        } for y in predictions]
     else:
-        predictions = [[vocab_list[x] for x in y['sample_ids']] + [utils.EOS]
-                       for y in predictions]
+        predictions = [{
+            'transcription': to_text(vocab_list, y['sample_ids']),
+            'embedding': y['embedding']
+        } for y in predictions]
 
-    predictions = [args.delimiter.join(y[:y.index(utils.EOS)]) for y in predictions]
-
-    with open(args.save, 'w') as f:
-        f.write('\n'.join(predictions))
+    save_to = os.path.join(args.model_dir, 'infer.txt')
+    with open(save_to, 'w') as f:
+        f.write('\n'.join(p['transcription'] for p in predictions))
 
 
 if __name__ == '__main__':
