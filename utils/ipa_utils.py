@@ -4,7 +4,7 @@ import itertools
 import pandas as pd
 import numpy as np
 
-from utils.vocab_utils import SOS, EOS
+from utils.vocab_utils import SOS, EOS, UNK, SOS_ID, EOS_ID, UNK_ID
 
 
 __all__ = [
@@ -75,13 +75,16 @@ def load_binf2phone(filename, spe_only=False, vocab_list=None):
         # Leave only phonemes from the vocabluary
         new_cols = [col for col in binf2phone.columns if col in vocab_list]
         binf2phone = binf2phone[new_cols]
-    binf2phone.insert(0, EOS, 0)
-    binf2phone.insert(0, SOS, 0)
+    binf2phone.insert(UNK_ID, UNK, 1)
+    binf2phone.insert(SOS_ID, SOS, 0)
+    binf2phone.insert(EOS_ID, EOS, 0)
+    
     bottom_df = pd.DataFrame(np.zeros([2, binf2phone.shape[1]]),
                              columns=binf2phone.columns, index=[SOS, EOS])
     binf2phone = pd.concat((binf2phone, bottom_df))
     binf2phone.loc[binf2phone.index==SOS, SOS] = 1
     binf2phone.loc[binf2phone.index==EOS, EOS] = 1
+    binf2phone.loc[binf2phone.index.isin([SOS, EOS]), UNK] = 1
     return binf2phone
 
 def ipa2binf(ipa, binf2phone):
