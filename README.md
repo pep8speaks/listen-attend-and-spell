@@ -1,8 +1,12 @@
 # listen-attend-and-spell
 
 ## Overview
+This repository is a fork of [WindQAQ implementation][original_implementation] of [*Listen, Attend and Spell*][las] (LAS) model.
 
-**listen-attend-and-spell** contains the implementation of [*Listen, Attend and Spell*][las] (LAS) model based on Tensorflow. In this project, the LAS model is trained via input pipeline and estimator API of Tensorflow, which makes the whole procedure truly end-to-end.
+Main differences:
+* Recipes for some common datasets: Librispeech, Common Voice, Timit.
+* Phones/words data collection switch. Usefull if you intend to train on IPA targets.
+* Features extraction using Tensorflow operations for MFCC. Can be later used to export end-to-end waveform to transcription graph.
 
 ## Usage
 
@@ -118,13 +122,13 @@ optional arguments:
 ### Tensorboard
 With the help of tensorflow estimator API, you can launch tensorboard by `tensorboard --logdir=MODEL_DIR`  to see the training procedure.
 
-## Result
-### Phones
-### Words
-#### TIMIT
-The following figures show the results on TIMIT dataset (4620 training sentence and 1680 testing sentence). If you prepare the TFRecord files of TIMIT, you can run the model with `misc/hparams.json` (put it into your model directory) to produce the similar results. Note that, customarily, we map phones into 39 phone set while evaluating TIMIT dataset, and thus, the edit distance evaluated down below is based on 39 phone set.
+### Notes
 
-![training curve](images/curve.png)
+If you intend to use LAS architecture and not vanilla seq2seq model,
+use `--use_pyramidal --pass_hidden_state --bottom_only` flags combination.
+
+Rerun of `train.py` would result in most of parameters restored from original run.
+Thus, if you wish to override this behaviour, delete `hparams.json` file.  
 
 ## References
 

@@ -9,7 +9,11 @@ __all__ = [
 
 
 def create_attention_images(final_context_state):
-    attention_images = (final_context_state.alignment_history.stack())
+    try:
+        attention_images = final_context_state.alignment_history.stack()
+    except AttributeError:
+        # Case for pyramidal-pass_hidden_state-bottom_only combination.
+        attention_images = final_context_state[0].alignment_history.stack()
     # Reshape to (batch, src_seq_len, tgt_seq_len,1)
     attention_images = tf.expand_dims(
         tf.transpose(attention_images, [1, 2, 0]), -1)

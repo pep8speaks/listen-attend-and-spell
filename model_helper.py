@@ -156,6 +156,7 @@ def las_model_fn(features,
     if mode == tf.estimator.ModeKeys.PREDICT:
         predictions = {
             'sample_ids': sample_ids,
+            'embedding': tf.stack([encoder_state[-1].c, encoder_state[-1].h], axis=1)
         }
 
         return tf.estimator.EstimatorSpec(mode, predictions=predictions)
