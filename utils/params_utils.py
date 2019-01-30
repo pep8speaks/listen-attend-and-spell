@@ -1,6 +1,7 @@
 import os
 import json
 import tensorflow as tf
+import tensorflow.contrib as tf_contrib
 
 __all__ = [
     'HParams',
@@ -8,7 +9,7 @@ __all__ = [
 ]
 
 
-class HParams(tf.contrib.training.HParams):
+class HParams(tf_contrib.training.HParams):
     def del_hparam(self, name):
         if hasattr(self, name):
             delattr(self, name)
@@ -50,14 +51,14 @@ def get_default_hparams():
         attention_type='luong',
         attention_layer_size=None,
         beam_width=0,
-
+        binary_outputs=False,
         # evaluation setting
         mapping=None)
 
     return hparams
 
 
-def create_hparams(args, target_vocab_size, sos_id=1, eos_id=2):
+def create_hparams(args, target_vocab_size=None, sos_id=1, eos_id=2):
     hparams = get_default_hparams()
     hparams_file = os.path.join(args.model_dir, 'hparams.json')
 
@@ -69,6 +70,7 @@ def create_hparams(args, target_vocab_size, sos_id=1, eos_id=2):
             if name not in hparams_dict:
                 hparams_dict[name] = value
     else:
+        assert(target_vocab_size is not None, 'Target vocabulary size is not specified.')
         hparams_dict = {
             **vars(args),
             **{'sos_id': sos_id, 'eos_id': eos_id, 'target_vocab_size': target_vocab_size},
@@ -96,6 +98,7 @@ def get_encoder_decoder_hparams(hparams):
     learning_rate = hparams.pop_hparam('learning_rate')
     dropout = hparams.pop_hparam('dropout')
     mapping = hparams.pop_hparam('mapping')
+    binary_outputs = hparams.pop_hparam('binary_outputs')
 
     encoder_hparams = HParams(
         num_layers=hparams.pop_hparam('encoder_layers'),
@@ -106,7 +109,8 @@ def get_encoder_decoder_hparams(hparams):
     decoder_hparams = HParams(
         num_layers=hparams.pop_hparam('decoder_layers'),
         num_units=hparams.pop_hparam('decoder_units'),
-        dropout=dropout)
+        dropout=dropout,
+        binary_outputs=binary_outputs)
 
     for name, value in hparams.values().items():
         decoder_hparams.add_hparam(name, value)

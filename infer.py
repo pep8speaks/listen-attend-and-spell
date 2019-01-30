@@ -31,12 +31,22 @@ def parse_args():
     parser.add_argument('--num_channels', type=int, default=39,
                         help='number of input channels')
     parser.add_argument('--delimiter', help='Symbols delimiter. Default: " "', type=str, default=' ')
+    parser.add_argument('--output_ipa', action='store_true',
+                        help='If model''s outputs are binary features, make the graph output phones')
+    parser.add_argument('--binf_map', type=str, default='misc/binf_map.csv',
+                        help='Path to CSV with phonemes to binary features map')
+    parser.add_argument('--spe', help='Use only SPE features', action='store_true')
 
     return parser.parse_args()
 
 
-def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1):
-    dataset = utils.read_dataset(dataset_filename, num_channels)
+def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=39, batch_size=8, num_epochs=1,
+    binf2phone=None):
+    binary_targets = binf2phone is not None
+    labels_shape = [] if not binary_targets else len(binf2phone.index)
+    labels_dtype = tf.string if not binary_targets else tf.float32
+    dataset = utils.read_dataset(dataset_filename, num_channels, labels_shape=labels_shape,
+        labels_dtype=labels_dtype)
     vocab_table = utils.create_vocab_table(vocab_filename)
 
     if norm_filename is not None:
@@ -44,30 +54,48 @@ def input_fn(dataset_filename, vocab_filename, norm_filename=None, num_channels=
     else:
         means = stds = None
 
+    sos = binf2phone[utils.SOS].values if binary_targets else utils.SOS
+    eos = binf2phone[utils.EOS].values if binary_targets else utils.EOS
+
     dataset = utils.process_dataset(
-        dataset, vocab_table, utils.SOS, utils.EOS, means, stds, batch_size, num_epochs)
+        dataset, vocab_table, sos, eos, means, stds, batch_size, num_epochs,
+        binary_targets=binary_targets, labels_shape=labels_shape)
 
     return dataset.take(10)
 
 
 def main(args):
-    vocab_list = utils.load_vocab(args.vocab)
-    vocab_size = len(vocab_list)
-
     config = tf.estimator.RunConfig(model_dir=args.model_dir)
-    hparams = utils.create_hparams(
-        args, vocab_size, utils.SOS_ID, utils.EOS_ID)
+    hparams = utils.create_hparams(args)
 
     hparams.decoder.set_hparam('beam_width', args.beam_width)
 
+    vocab_list = utils.load_vocab(args.vocab)
+    binf2phone_np = None
+    binf2phone = None
+    if not hparams.decoder.binary_outputs:
+        vocab_size = len(vocab_list)
+    else:
+        binf2phone = utils.load_binf2phone(args.binf_map, args.spe, vocab_list)
+        vocab_size = len(binf2phone.index)
+        vocab_list = binf2phone.columns
+        if args.output_ipa:
+            binf2phone_np = binf2phone.values
+
+    def model_fn(features, labels,
+        mode, config, params):
+        return las_model_fn(features, labels, mode, config, params,
+            binf2phone=binf2phone_np)
+
     model = tf.estimator.Estimator(
-        model_fn=las_model_fn,
+        model_fn=model_fn,
         config=config,
         params=hparams)
 
     predictions = model.predict(
         input_fn=lambda: input_fn(
-            args.data, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1),
+            args.data, args.vocab, args.norm, num_channels=args.num_channels, batch_size=args.batch_size, num_epochs=1,
+            binf2phone=binf2phone),
         predict_keys='sample_ids')
 
     if args.beam_width > 0:

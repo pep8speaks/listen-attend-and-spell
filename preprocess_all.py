@@ -7,7 +7,7 @@ from multiprocessing import Lock
 from joblib import Parallel, delayed, dump
 from argparse import ArgumentParser
 
-from utils import calculate_mfcc_op, get_ipa
+from utils import calculate_mfcc_op, get_ipa, ipa2binf, load_binf2phone
 
 
 SAMPLE_RATE = 16000
@@ -22,14 +22,21 @@ tfrecord_mutex = Lock()
 stats_mutex = Lock()
 waveform_place = tf.placeholder(tf.float32, [None, None])
 mfcc_op = None
-
+binf2phone = None
 
 def make_example(input, label):
-    feature_lists = tf.train.FeatureLists(feature_list={
-        'labels': tf.train.FeatureList(feature=[
+    if isinstance(label, list):
+        label_list = tf.train.FeatureList(feature=[
             tf.train.Feature(bytes_list=tf.train.BytesList(value=[p.encode()]))
             for p in label
-        ]),
+        ])
+    else:
+        label_list = tf.train.FeatureList(feature=[
+            tf.train.Feature(float_list=tf.train.FloatList(value=f))
+            for f in label
+        ])
+    feature_lists = tf.train.FeatureLists(feature_list={
+        'labels': label_list,
         'inputs': tf.train.FeatureList(feature=[
             tf.train.Feature(float_list=tf.train.FloatList(value=f))
             for f in input
@@ -60,9 +67,12 @@ def build_features_and_vocabulary_fn(args, inputs):
     waveform = inputs['waveform']
     text = inputs['text']
     language = inputs['language']
-    if args.targets == 'phones':
-        text = list(' '.join([get_ipa(t, language) for t in text]))
-        text = [x if x != ' ' else '<space>' for x in text]
+    binf = None
+    if args.targets in ('phones', 'binary_features'):
+        text = ' '.join(text)
+        text = get_ipa(text, language)
+        if args.targets == 'binary_features':
+            binf = ipa2binf(text, binf2phone)
     mfcc = session.run(mfcc_op, {waveform_place: waveform[np.newaxis, :]})[0, :, :]
     vocabulary.update(text)
     if args.norm_file:
@@ -76,7 +86,7 @@ def build_features_and_vocabulary_fn(args, inputs):
             total += 1
     return {
         'mfcc': mfcc,
-        'text': text
+        'text': binf if args.targets == 'binary_features' else text
     }
 
 
@@ -111,8 +121,13 @@ if __name__ == "__main__":
     parser.add_argument('--step', help='Analysis window step in ms.', type=int, default=10)
     parser.add_argument('--n_jobs', help='Number of parallel jobs.', type=int, default=4)
     parser.add_argument('--targets', help='Determines targets type.', type=str,
-                        choices=['words', 'phones'], default='words')
+                        choices=['words', 'phones', 'binary_features'], default='words')
+    parser.add_argument('--spe', help='Use only SPE features', action='store_true')
+    parser.add_argument('--binf_map', help='Path to CSV with phonemes to binary features map',
+                        type=str, default='misc/binf_map.csv')
     args = parser.parse_args()
+    if args.targets in ('phones', 'binary_features'):
+        binf2phone = load_binf2phone(args.binf_map, args.spe)
     print('Processing audio dataset from file {}.'.format(args.input_file))
     window = int(SAMPLE_RATE * args.window / 1000.0)
     step = int(SAMPLE_RATE * args.step / 1000.0)
