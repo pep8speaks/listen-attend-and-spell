@@ -6,7 +6,7 @@ import random
 
 parser = ArgumentParser()
 parser.add_argument('--timit_path', help='Path to converted TIMIT corpus.', required=True, type=str)
-parser.add_argument('--val_fraction', help='What fraction of train to use in validation.', required=True, type=float)
+parser.add_argument('--val_fraction', help='What fraction of train to use in validation.', default=-1, type=float)
 parser.add_argument('--output_dir', help='Path to output directory.', required=True, type=str)
 
 args = parser.parse_args()
